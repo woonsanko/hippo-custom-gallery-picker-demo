@@ -72,7 +72,7 @@ There are three configuration locations:
 - **Custom CKEditorNodePlugin** (The embedded image picker in the CKEditor as demonstrated in the Test Case 2)
   - */hippo:namespaces/hippostd/html/editor:templates/_default_/root/@plugin.class = "org.example.customgallerypicker.demo.cms.plugins.BinaryPathDeterminingCKEditorNodePlugin"*
   - See [html.xml](bootstrap/configuration/src/main/resources/namespaces/hippostd/html.xml) for detail.
-- **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document renaming event as demonstrated in the Test Case 3)
+- **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document or folder renaming event as demonstrated in the Test Case 3 and the Test Case 4)
   - /hippo:configuration/hippo:modules/binarypathupdater (hipposys:module)
     - @hipposys:className = "org.example.customgallerypicker.demo.repository.module.BinaryPathUpdaterModule"
   - See [binarypathupdater.xml](bootstrap/configuration/src/main/resources/configuration/modules/binarypathupdater.xml) for detail.
