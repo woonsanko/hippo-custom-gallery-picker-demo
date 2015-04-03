@@ -10,5 +10,5 @@ From the project root folder, execute:
     mvn clean verify
     mvn -P cargo.run
 
-After your project is set up, access the CMS at http://localhost:8080/cms and the site at http://localhost:8080/site.
+After your project is set up, access the CMS at http://localhost:8080/cms.
 Logs are located in target/tomcat7x/logs
