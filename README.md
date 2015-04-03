@@ -12,3 +12,16 @@ From the project root folder, execute:
 
 After your project is set up, access the CMS at http://localhost:8080/cms.
 Logs are located in target/tomcat7x/logs
+
+How to TEST
+===========
+TODO
+
+Custom Configurations
+=====================
+TODO
+
+Custom Implementation in Detail
+===============================
+TODO
+
