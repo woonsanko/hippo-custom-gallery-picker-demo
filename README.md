@@ -1,6 +1,11 @@
 What is Hippo Custom Gallery Picker Demo
 ========================================
-TODO
+This project demonstrates how you can customize the default image picker plugin components.
+Just for demonstration purpose, it assumes the following simple use cases:
+- If a user is editing a document (e.g, 'customgallerypickerdemo/news/2015/04/The medusa news'), and if the user is trying to add an image link in a field of the document or add an embedded image in a rich text content field, then the default binary folder should be reflecting the document node path. That is, the default binary folder path should be 'customgallerypickerdemo/news/2015/04/The medusa news/' and so the users should be able to upload the images in that folder without having to create the binary folders. If the binary folders didn't exist, it should create the binary folder automatically under the hood.
+- Also, when the user renames the document, the existing binary folder must be renamed automatically.
+
+You will probably be able to get the idea on how to customize each image picker plugin of Hippo CMS in generla even though this demo project has a very limited use case support at the moment.
 
 Running locally
 ===============
