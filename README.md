@@ -55,7 +55,7 @@ There are three configuration locations:
 - **Custom GalleryPickerPlugin** (The image link field picker on the right pane in the Test Case 1)
   - */hippo:namespaces/hippogallerypicker/imagelink/editor:templates/_default_/root/@plugin.class = "org.example.customgallerypicker.demo.cms.plugins.BinaryPathDeterminingGalleryPickerPlugin"*
   - See [imagelink.xml](bootstrap/configuration/src/main/resources/namespaces/hippogallerypicker/imagelink.xml) for detail.
-- **Custom CKEditorPlugin** (The embedded image picker in the CKEditor as demonstrated in the Test Case 2)
+- **Custom CKEditorNodePlugin** (The embedded image picker in the CKEditor as demonstrated in the Test Case 2)
   - */hippo:namespaces/hippostd/html/editor:templates/_default_/root/@plugin.class = "org.example.customgallerypicker.demo.cms.plugins.BinaryPathDeterminingCKEditorNodePlugin"*
   - See [html.xml](bootstrap/configuration/src/main/resources/namespaces/hippostd/html.xml) for detail.
 - **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document renaming event as demonstrated in the Test Case 3)
@@ -65,5 +65,16 @@ There are three configuration locations:
 
 Custom Implementation in Detail
 ===============================
-TODO
-
+There are three main custom components:
+- **Custom GalleryPickerPlugin** (The image link field picker on the right pane in the Test Case 1)
+  - [BinaryPathDeterminingGalleryPickerPlugin](cms/src/main/java/org/example/customgallerypicker/demo/cms/plugins/BinaryPathDeterminingGalleryPickerPlugin.java)
+  - This component extends the default GalleryPickerPlugin in order to set the base image folder node UUID plugin configuration parameter dynamically according to the context document node path.
+  - See its javadoc documentation for detail.
+- **Custom CKEditorNodePlugin** (The embedded image picker in the CKEditor as demonstrated in the Test Case 2)
+  - [BinaryPathDeterminingCKEditorNodePlugin](cms/src/main/java/org/example/customgallerypicker/demo/cms/plugins/BinaryPathDeterminingCKEditorNodePlugin.java)
+  - This component extends the default CKEditorNodePlugin in order to set the base image folder node UUID plugin configuration parameter dynamically according to the context document node path.
+  - See its javadoc documentation for detail.
+- **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document 
+  - [BinaryPathUpdaterModule](cms/src/main/java/org/example/customgallerypicker/demo/repository/module/BinaryPathUpdaterModule.java)
+  - This DaemonModule component registers a HippoEvent listener in order to synchronize the binary folder name whenever user renames a document.
+  - See its javadoc documentation for detail.
