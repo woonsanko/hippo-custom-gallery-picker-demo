@@ -54,6 +54,13 @@ public class BinaryPathUpdaterModule implements DaemonModule {
             final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(documentHandleNode);
             String binaryFolderRelPath;
             String binaryFolderParentRelPath;
+            String newBinaryFolderNodePath;
+            Node newBinaryFolderNode;
+
+            Node documentHandleTranslationNode;
+            Node binaryFolderTranslationNode;
+            String translationLanguage;
+            String translationMessage;
 
             boolean anyMoved = false;
 
@@ -64,7 +71,34 @@ public class BinaryPathUpdaterModule implements DaemonModule {
                 if (StringUtils.equals(binaryFolderParentRelPath, documentHandleParentRelPath)) {
                     if (!StringUtils.equals(binaryFolderRelPath, documentHandleRelPath)) {
                         // Now rename the binary folder name according to the document handle node name here...
-                        session.move(binaryFolderNode.getPath(), binaryFolderNode.getParent().getPath() + "/" + documentHandleNode.getName());
+                        newBinaryFolderNodePath = binaryFolderNode.getParent().getPath() + "/" + documentHandleNode.getName();
+                        session.move(binaryFolderNode.getPath(), newBinaryFolderNodePath);
+
+                        // re-copy hippo:translation nodes as well.
+                        newBinaryFolderNode = session.getNode(newBinaryFolderNodePath);
+
+                        if (!newBinaryFolderNode.isNodeType("mix:referenceable")) {
+                            newBinaryFolderNode.addMixin("mix:referenceable");
+                        }
+
+                        if (!newBinaryFolderNode.isNodeType("hippo:translated")) {
+                            newBinaryFolderNode.addMixin("hippo:translated");
+                        }
+
+                        for (NodeIterator nodeIt = newBinaryFolderNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
+                            nodeIt.nextNode().remove();
+                        }
+
+                        for (NodeIterator nodeIt = documentHandleNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
+                            documentHandleTranslationNode = nodeIt.nextNode();
+                            translationLanguage = documentHandleTranslationNode.getProperty("hippo:language").getString();
+                            translationMessage = documentHandleTranslationNode.getProperty("hippo:message").getString();
+
+                            binaryFolderTranslationNode = newBinaryFolderNode.addNode("hippo:translation", "hippo:translation");
+                            binaryFolderTranslationNode.setProperty("hippo:language", translationLanguage);
+                            binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
+                        }
+
                         anyMoved = true;
                     }
                 }
@@ -77,7 +111,7 @@ public class BinaryPathUpdaterModule implements DaemonModule {
             log.error("Repository exception while handling document rename workflow event.", e);
         } finally {
             try {
-                session.refresh(true);
+                session.refresh(false);
             } catch (RepositoryException re) {
                 log.error("Failed to refresh the session.", re);
             }
