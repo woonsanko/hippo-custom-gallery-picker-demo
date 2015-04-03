@@ -3,7 +3,7 @@ What is Hippo Custom Gallery Picker Demo
 This project demonstrates how you can customize the default image picker plugin components.
 Just for demonstration purpose, it assumes the following simple use cases:
 - If a user is editing a document (e.g, 'customgallerypickerdemo/news/2015/04/The medusa news'), and if the user is trying to add an image link in a field of the document or add an embedded image in a rich text content field, then the default binary folder should be reflecting the document node path. That is, the default binary folder path should be 'customgallerypickerdemo/news/2015/04/The medusa news/' and so the users should be able to upload the images in that folder without having to create the binary folders. If the binary folders didn't exist, it should create the binary folder automatically under the hood.
-- Also, when the user renames the document, the existing binary folder must be renamed automatically.
+- Also, when the user renames the document or renames an interim folder, the existing binary folders must be renamed automatically.
 
 You will probably be able to get the idea on how to customize each image picker plugin of Hippo CMS in generla even though this demo project has a very limited use case support at the moment.
 
@@ -54,6 +54,15 @@ Test Case 3: Document Renaming to synchronize Binary Folder name
 - Try to update the 'News Image' field or the embedded image in the 'Content' rich text field.
 - Now you will see the binary folder name has been renamed to 'customgallerypickerdemo/news/2015/04/The medusa news2' accordingly.
 
+Test Case 4: Folder Renaming to synchronize Binary Folder name
+----------------------------------------------------------------
+- Suppose you already finished the Test Case 1 and Test Case 2 in the preceding section.
+- Select on 'customgallerypickerdemo/news/2015/04' folder.
+- Rename the folder from '04' to 'April'.
+- Edit the 'customgallerypickerdemo/news/2015/04/The medusa news' document again.
+- Try to update the 'News Image' field or the embedded image in the 'Content' rich text field.
+- Now you will see the binary folder name has been renamed to 'customgallerypickerdemo/news/2015/April/The medusa news2' accordingly.
+
 Custom Configurations
 =====================
 There are three configuration locations:
@@ -81,5 +90,5 @@ There are three main custom components:
   - See its javadoc documentation for detail.
 - **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document 
   - [BinaryPathUpdaterModule](cms/src/main/java/org/example/customgallerypicker/demo/repository/module/BinaryPathUpdaterModule.java)
-  - This DaemonModule component registers a HippoEvent listener in order to synchronize the binary folder name whenever user renames a document.
+  - This DaemonModule component registers a HippoEvent listener in order to synchronize the binary folder name whenever user renames a document or a folder.
   - See its javadoc documentation for detail.
