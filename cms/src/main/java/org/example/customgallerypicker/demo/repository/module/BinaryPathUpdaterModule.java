@@ -41,13 +41,20 @@ import org.slf4j.LoggerFactory;
 /**
  * A {@link DaemonModule} implementation which registers a {@link HippoEvent} listener
  * in its {@link #initialize(Session)} method, in order to synchronize the binary folder name
- * whenever user renames a document.
+ * whenever user renames a document or a folder.
  * <p>
  * For example, if a document at "/content/documents/myhippoproject/announcement/getting-started-with-hippo"
  * is renamed to "/content/documents/myhippoproject/announcement/getting-started-with-hippo-2",
- * then the image upload base path should be also renamed
+ * then the image upload base folder should be also renamed
  * from "/content/gallery/myhippoproject/announcement/getting-started-with-hippo/"
  * to "/content/gallery/myhippoproject/announcement/getting-started-with-hippo-2/" accordingly.
+ * </p>
+ * <p>
+ * Also, if the folder at "/content/documents/myhippoproject/announcement/"
+ * is renamed to "/content/documents/myhippoproject/announcement2/",
+ * then the interim image upload base folder should be also renamed
+ * from "/content/gallery/myhippoproject/announcement2/getting-started-with-hippo/"
+ * to "/content/gallery/myhippoproject/announcement2/getting-started-with-hippo-2/" accordingly.
  * </p>
  */
 public class BinaryPathUpdaterModule implements DaemonModule {
@@ -60,112 +67,96 @@ public class BinaryPathUpdaterModule implements DaemonModule {
     private Session session;
 
     /**
-     * Hippo Document Renaming Event Listener instance.
+     * Hippo Document or Folder Renaming Event Listener instance.
      */
-    private HippoDocumentRenameEventListener documentRenameEventListener;
+    private HippoDocumentRenameEventListener documentOrFolderRenameEventListener;
 
     /**
      * {@inheritDoc}
      * <p>
      * This method stores the given {@code session} to use it when making changes on repository later
-     * and registers the document renaming event listener to {@link HippoEventBus}.
+     * and registers the document or folder renaming event listener to {@link HippoEventBus}.
      * </p>
      */
     @Override
     public void initialize(Session session) throws RepositoryException {
         this.session = session;
 
-        documentRenameEventListener = new HippoDocumentRenameEventListener();
-        HippoServiceRegistry.registerService(documentRenameEventListener, HippoEventBus.class);
+        documentOrFolderRenameEventListener = new HippoDocumentRenameEventListener();
+        HippoServiceRegistry.registerService(documentOrFolderRenameEventListener, HippoEventBus.class);
     }
 
     /**
      * {@inheritDoc}
      * <p>
-     * This method unregisters the document renaming event listener from {@link HippoEventBus}.
+     * This method unregisters the document or folder renaming event listener from {@link HippoEventBus}.
      * </p>
      */
     @Override
     public void shutdown() {
-        if (documentRenameEventListener != null) {
-            HippoServiceRegistry.unregisterService(documentRenameEventListener, HippoEventBus.class);
+        if (documentOrFolderRenameEventListener != null) {
+            HippoServiceRegistry.unregisterService(documentOrFolderRenameEventListener, HippoEventBus.class);
         }
     }
 
     /**
-     * The main Hippo Document Renaming Event listener handler method which is invoked by {@link #documentRenameEventListener}.
+     * The main Hippo Document or Folder Renaming Event listener handler method which is invoked by {@link #documentOrFolderRenameEventListener}.
      * <p>
-     * Basically this method checks if the current final binary folder node name is different from the context document handle node name.
-     * If the relative path of the parent node of the final binary folder node is the same as
+     * Basically this method checks if the current final binary folder node name is different from 
+     * the context document handle node name, or the interim ancestor folder of the binary folder was renamed.
+     * On document renaming event, if the relative path of the parent node of the final binary folder node is the same as
      * the relative path of the parent node of context document handle node,
      * and if only the final binary folder name is different from the context document handle node name,
-     * then this method renames to final binary folder node name to the context document handle node name.
+     * then this method renames final binary folder node name to the context document handle node name.
      * </p>
-     * @param documentHandleUuid the subject document handle identifier in the context
+     * On folder renaming event, if the relative path of the binary folder node starts with
+     * the old folder node relative path,
+     * and if only the corresponding interim binary folder name is different from the context folder node name,
+     * then this method renames the corresponding interim binary folder node name to the context folder node name.
+     * </p>
+     * @param subjectId the subject document handle or folder node identifier in the context
+     * @param subjectPath the subject document handle or folder node identifier in the context
      */
-    protected void handleDocumentRenameHippoEvent(final String documentHandleUuid) {
+    protected void handleRenameHippoEvent(final String subjectId, final String subjectPath) {
         try {
-            final Node documentHandleNode = session.getNodeByIdentifier(documentHandleUuid);
-            final String documentHandleRelPath = StringUtils.removeStart(documentHandleNode.getPath(), "/content/documents/");
-            final String documentHandleParentRelPath = StringUtils.removeStart(documentHandleNode.getParent().getPath(), "/content/documents/");
+            final Node subjectNode = session.getNodeByIdentifier(subjectId);
 
-            final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(documentHandleNode);
-            String binaryFolderRelPath;
-            String binaryFolderParentRelPath;
-            String newBinaryFolderNodePath;
-            Node newBinaryFolderNode;
+            if (StringUtils.startsWith(subjectNode.getPath(), "/content/documents/")) {
+                if (subjectNode.isNodeType("hippostd:folder")) {
+                    handleFolderRenameHippoEvent(subjectNode, subjectPath);
+                } else if (subjectNode.isNodeType("hippo:handle") && subjectNode.hasNode(subjectNode.getName())) {
+                    handleDocumentRenameHippoEvent(subjectNode, subjectPath);
+                }
+            } else {
+                log.info("Ignoring hippo event on '{}' because it's not under '/content/documents/'.", subjectNode.getPath());
+            }
+        } catch (RepositoryException e) {
+            log.error("Repository exception while handling rename workflow event.", e);
+        }
+    }
 
-            Node documentHandleTranslationNode;
-            Node binaryFolderTranslationNode;
-            String translationLanguage;
-            String translationMessage;
+    /**
+     * Handles folder renaming hippo event.
+     * @param folderNode folder node
+     * @param subjectPath old folder path (the original folder path before renaming)
+     */
+    private void handleFolderRenameHippoEvent(final Node folderNode, final String subjectPath) {
+        try {
+            final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(folderNode);
 
-            boolean anyMoved = false;
+            boolean anyUpdated = false;
 
             for (Node binaryFolderNode : binaryFolderNodes) {
-                binaryFolderRelPath = StringUtils.removeStart(binaryFolderNode.getPath(), "/content/gallery/");
-                binaryFolderParentRelPath = StringUtils.removeStart(binaryFolderNode.getParent().getPath(), "/content/gallery/");
-
-                if (StringUtils.equals(binaryFolderParentRelPath, documentHandleParentRelPath)) {
-                    if (!StringUtils.equals(binaryFolderRelPath, documentHandleRelPath)) {
-                        // Now rename the binary folder name according to the document handle node name here...
-                        newBinaryFolderNodePath = binaryFolderNode.getParent().getPath() + "/" + documentHandleNode.getName();
-                        session.move(binaryFolderNode.getPath(), newBinaryFolderNodePath);
-
-                        newBinaryFolderNode = session.getNode(newBinaryFolderNodePath);
-
-                        // make sure to have proper mixins again.
-                        if (!newBinaryFolderNode.isNodeType("mix:referenceable")) {
-                            newBinaryFolderNode.addMixin("mix:referenceable");
-                        }
-                        if (!newBinaryFolderNode.isNodeType("hippo:translated")) {
-                            newBinaryFolderNode.addMixin("hippo:translated");
-                        }
-
-                        // let's remove all the hippo:translation child nodes and copy those again from the document handle.
-                        for (NodeIterator nodeIt = newBinaryFolderNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
-                            nodeIt.nextNode().remove();
-                        }
-                        for (NodeIterator nodeIt = documentHandleNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
-                            documentHandleTranslationNode = nodeIt.nextNode();
-                            translationLanguage = documentHandleTranslationNode.getProperty("hippo:language").getString();
-                            translationMessage = documentHandleTranslationNode.getProperty("hippo:message").getString();
-
-                            binaryFolderTranslationNode = newBinaryFolderNode.addNode("hippo:translation", "hippo:translation");
-                            binaryFolderTranslationNode.setProperty("hippo:language", translationLanguage);
-                            binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
-                        }
-
-                        anyMoved = true;
-                    }
+                if (synchronizeBinaryFolderByFolder(binaryFolderNode, folderNode, subjectPath)) {
+                    anyUpdated = true;
                 }
             }
 
-            if (anyMoved) {
+            if (anyUpdated) {
                 session.save();
             }
         } catch (RepositoryException e) {
-            log.error("Repository exception while handling document rename workflow event.", e);
+            log.error("Repository exception while synchronizing binary folders by document handle.", e);
         } finally {
             try {
                 session.refresh(false);
@@ -176,18 +167,150 @@ public class BinaryPathUpdaterModule implements DaemonModule {
     }
 
     /**
+     * Handles document renaming hippo event.
+     * @param documentHandleNode document handle node
+     * @param subjectPath document handle node path
+     */
+    private void handleDocumentRenameHippoEvent(final Node documentHandleNode, final String subjectPath) {
+        try {
+            final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(documentHandleNode);
+
+            boolean anyUpdated = false;
+
+            for (Node binaryFolderNode : binaryFolderNodes) {
+                if (synchronizeBinaryFolderByDocumentHandle(binaryFolderNode, documentHandleNode)) {
+                    anyUpdated = true;
+                }
+            }
+
+            if (anyUpdated) {
+                session.save();
+            }
+        } catch (RepositoryException e) {
+            log.error("Repository exception while synchronizing binary folders by document handle.", e);
+        } finally {
+            try {
+                session.refresh(false);
+            } catch (RepositoryException re) {
+                log.error("Failed to refresh the session.", re);
+            }
+        }
+    }
+
+    /**
+     * Synchronize the interim binary folder node name based on the renamed folder node.
+     * @param binaryFolderNode the final binary folder node from which the interim binary folder should be calculated
+     * @param folderNode the context folder node
+     * @param oldFolderPath the original folder node path (before renaming)
+     * @return true if any updated
+     * @throws RepositoryException repository exception if it fails to move nodes.
+     */
+    private boolean synchronizeBinaryFolderByFolder(Node binaryFolderNode, Node folderNode, String oldFolderPath) throws RepositoryException {
+        boolean updated = false;
+
+        try {
+            final String folderRelPath = StringUtils.removeStart(folderNode.getPath(), "/content/documents/");
+            final String oldFolderRelPath = StringUtils.removeStart(oldFolderPath, "/content/documents/");
+            final String binaryFolderRelPath = StringUtils.removeStart(binaryFolderNode.getPath(), "/content/gallery/");
+
+            if (StringUtils.startsWith(binaryFolderRelPath, oldFolderRelPath)) {
+                Node interimBinaryFolderNode = session.getNode("/content/gallery/" + oldFolderRelPath);
+                moveBinaryFolderNodeByBaseNode(interimBinaryFolderNode, folderNode);
+                updated = true;
+            }
+        } catch (RepositoryException e) {
+            log.error("Repository exception while synchronizing single binary folder by document handle.", e);
+        }
+
+        return updated;
+    }
+
+    /**
+     * Synchronize the final binary folder node name based on the renamed document handle node.
+     * @param binaryFolderNode the final binary folder node
+     * @param documentHandleNode the context document handle node
+     * @return true if any updated
+     * @throws RepositoryException repository exception if it fails to move nodes.
+     */
+    private boolean synchronizeBinaryFolderByDocumentHandle(Node binaryFolderNode, Node documentHandleNode) throws RepositoryException {
+        boolean updated = false;
+
+        try {
+            final String documentHandleRelPath = StringUtils.removeStart(documentHandleNode.getPath(), "/content/documents/");
+            final String documentHandleParentRelPath = StringUtils.removeStart(documentHandleNode.getParent().getPath(), "/content/documents/");
+
+            String binaryFolderRelPath = StringUtils.removeStart(binaryFolderNode.getPath(), "/content/gallery/");
+            String binaryFolderParentRelPath = StringUtils.removeStart(binaryFolderNode.getParent().getPath(), "/content/gallery/");
+
+            if (StringUtils.equals(binaryFolderParentRelPath, documentHandleParentRelPath)) {
+                if (!StringUtils.equals(binaryFolderRelPath, documentHandleRelPath)) {
+                    moveBinaryFolderNodeByBaseNode(binaryFolderNode, documentHandleNode);
+                    updated = true;
+                }
+            }
+        } catch (RepositoryException e) {
+            log.error("Repository exception while synchronizing single binary folder by document handle.", e);
+        }
+
+        return updated;
+    }
+
+    /**
+     * Rename (move) the {@code binaryFolderNode} based on the corresponding base node
+     * (which is either document handle node or interim folder node).
+     * @param binaryFolderNode binary folder node
+     * @param correspondingBaseNode corresponding base node (which is either document handle node or interim folder node)
+     * @throws RepositoryException repository exception if node moving (renaming) fails.
+     */
+    private void moveBinaryFolderNodeByBaseNode(Node binaryFolderNode, Node correspondingBaseNode) throws RepositoryException {
+        // Now rename the binary folder name according to the document handle node name here...
+        String newBinaryFolderNodePath = binaryFolderNode.getParent().getPath() + "/" + correspondingBaseNode.getName();
+        session.move(binaryFolderNode.getPath(), newBinaryFolderNodePath);
+
+        Node newBinaryFolderNode = session.getNode(newBinaryFolderNodePath);
+
+        // make sure to have proper mixins again.
+        if (!newBinaryFolderNode.isNodeType("mix:referenceable")) {
+            newBinaryFolderNode.addMixin("mix:referenceable");
+        }
+        if (!newBinaryFolderNode.isNodeType("hippo:translated")) {
+            newBinaryFolderNode.addMixin("hippo:translated");
+        }
+
+        // let's remove all the hippo:translation child nodes and copy those again from the document handle.
+        for (NodeIterator nodeIt = newBinaryFolderNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
+            nodeIt.nextNode().remove();
+        }
+
+        Node documentHandleTranslationNode;
+        String translationLanguage;
+        String translationMessage;
+        Node binaryFolderTranslationNode;
+
+        for (NodeIterator nodeIt = correspondingBaseNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
+            documentHandleTranslationNode = nodeIt.nextNode();
+            translationLanguage = documentHandleTranslationNode.getProperty("hippo:language").getString();
+            translationMessage = documentHandleTranslationNode.getProperty("hippo:message").getString();
+
+            binaryFolderTranslationNode = newBinaryFolderNode.addNode("hippo:translation", "hippo:translation");
+            binaryFolderTranslationNode.setProperty("hippo:language", translationLanguage);
+            binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
+        }
+    }
+
+    /**
      * Finds all the mirror link compound nodes (e.g, image link nodes),
      * each of which is pointing to a node under /content/gallery/,
      * under the document handle node.
      * @param documentHandleNode the document handle node
      * @return all the mirror link compound nodes (e.g, image link nodes) under the document handle node
      */
-    private Collection<Node> getLinkedBinaryFolderNodes(final Node documentHandleNode) {
+    private Collection<Node> getLinkedBinaryFolderNodes(final Node baseNode) {
         Map<String, Node> binaryFolderNodesMap = new HashMap<String, Node>();
 
         try {
             final String statement = "/jcr:root"
-                               + documentHandleNode.getPath()
+                               + baseNode.getPath()
                                + "//element(*,hippo:facetselect)[@hippo:docbase and @hippo:docbase != 'cafebabe-cafe-babe-cafe-babecafebabe']";
             Query query = session.getWorkspace().getQueryManager().createQuery(RepoUtils.encodeXpath(statement), Query.XPATH);
             QueryResult result = query.execute();
@@ -248,7 +371,9 @@ public class BinaryPathUpdaterModule implements DaemonModule {
                 // If editor changes both the label and the URL (node) name of the document, it posts 'rename' action followed by 'replaceAllLocalizedNames' action.
                 // Therefore, it's safer to handle 'replaceAllLocalizedNames' action here.
                 if ("replaceAllLocalizedNames".equals(event.action())) {
-                    handleDocumentRenameHippoEvent(((HippoWorkflowEvent) event).subjectId());
+                    String subjectId = ((HippoWorkflowEvent) event).subjectId();
+                    String subjectPath = ((HippoWorkflowEvent) event).subjectPath();
+                    handleRenameHippoEvent(subjectId, subjectPath);
                 }
             }
         }
