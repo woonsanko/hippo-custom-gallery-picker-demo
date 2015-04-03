@@ -88,7 +88,7 @@ There are three main custom components:
   - [BinaryPathDeterminingCKEditorNodePlugin](cms/src/main/java/org/example/customgallerypicker/demo/cms/plugins/BinaryPathDeterminingCKEditorNodePlugin.java)
   - This component extends the default CKEditorNodePlugin in order to set the base image folder node UUID plugin configuration parameter dynamically according to the context document node path.
   - See its javadoc documentation for detail.
-- **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document 
+- **Custom Document Renaming Event Listener Module** (The automatic binary folder renaming module on document or folder renaming event)
   - [BinaryPathUpdaterModule](cms/src/main/java/org/example/customgallerypicker/demo/repository/module/BinaryPathUpdaterModule.java)
   - This DaemonModule component registers a HippoEvent listener in order to synchronize the binary folder name whenever user renames a document or a folder.
   - See its javadoc documentation for detail.
