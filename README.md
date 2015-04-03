@@ -25,6 +25,7 @@ Test Case 1: Custom Gallery Picker for an image link field
 - Upload an image file by using 'Browse...' and 'Upload' buttons on the top pane.
 - Select the uploaded image in the binary folder and click on 'OK' button.
 - Now you will see the image selected in the field.
+- Publish the document.
 
 Test Case 2: Custom CKEditor Image Picker for an image tag
 ----------------------------------------------------------
@@ -36,11 +37,17 @@ Test Case 2: Custom CKEditor Image Picker for an image tag
 - Upload an image file by using 'Browse...' and 'Upload' buttons on the top pane.
 - Select the uploaded image in the binary folder and click on 'OK' button.
 - Now you will see the image embedded in the rich text field.
+- Publish the document.
 
 Test Case 3: Document Renaming to synchronize Binary Folder name
 ----------------------------------------------------------------
-- TODO1
-- TODO2
+- Suppose you already finished the Test Case 1 and Test Case 2 in the preceding section.
+- Take the 'customgallerypickerdemo/news/2015/04/The medusa news' document offline.
+- Click on 'Document/Rename...' menu item.
+- Change the document name to 'The medusa news2' for instance, and click on 'Reset...' link as well. Click on 'OK' button to rename the document.
+- Click on 'Edit' button to edit the document again.
+- Try to update the 'News Image' field or the embedded image in the 'Content' rich text field.
+- Now you will see the binary folder name has been renamed to 'customgallerypickerdemo/news/2015/04/The medusa news2' accordingly.
 
 Custom Configurations
 =====================
