@@ -62,6 +62,10 @@ Test Case 4: Folder Renaming to synchronize Binary Folder name
 - Edit the 'customgallerypickerdemo/news/2015/04/The medusa news' document again.
 - Try to update the 'News Image' field or the embedded image in the 'Content' rich text field.
 - Now you will see the binary folder name has been renamed to 'customgallerypickerdemo/news/2015/April/The medusa news2/' accordingly.
+- Also try to rename the folder from 'news' to 'Archive'.
+- Edit the 'customgallerypickerdemo/Archive/2015/04/The medusa news' document again.
+- Try to update the 'News Image' field or the embedded image in the 'Content' rich text field.
+- Now you will see the binary folder name has been renamed to 'customgallerypickerdemo/Archive/2015/April/The medusa news2/' accordingly.
 
 Custom Configurations
 =====================
