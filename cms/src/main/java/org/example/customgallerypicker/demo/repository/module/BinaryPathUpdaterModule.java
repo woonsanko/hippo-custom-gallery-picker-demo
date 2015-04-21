@@ -17,6 +17,7 @@ package org.example.customgallerypicker.demo.repository.module;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.jcr.ItemNotFoundException;
@@ -27,6 +28,7 @@ import javax.jcr.Session;
 import javax.jcr.query.Query;
 import javax.jcr.query.QueryResult;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.hippoecm.repository.util.RepoUtils;
 import org.onehippo.cms7.event.HippoEvent;
@@ -100,60 +102,35 @@ public class BinaryPathUpdaterModule implements DaemonModule {
     }
 
     /**
-     * The main Hippo Document or Folder Renaming Event listener handler method which is invoked by {@link #documentOrFolderRenameEventListener}.
-     * <p>
-     * Basically this method checks if the current final binary folder node name is different from 
-     * the context document handle node name, or the interim ancestor folder of the binary folder was renamed.
-     * On document renaming event, if the relative path of the parent node of the final binary folder node is the same as
-     * the relative path of the parent node of context document handle node,
-     * and if only the final binary folder name is different from the context document handle node name,
-     * then this method renames final binary folder node name to the context document handle node name.
-     * </p>
-     * On folder renaming event, if the relative path of the binary folder node starts with
-     * the old folder node relative path,
-     * and if only the corresponding interim binary folder name is different from the context folder node name,
-     * then this method renames the corresponding interim binary folder node name to the context folder node name.
-     * </p>
-     * @param subjectId the subject document handle or folder node identifier in the context
-     * @param subjectPath the subject document handle or folder node identifier in the context
-     */
-    protected void handleRenameHippoEvent(final String subjectId, final String subjectPath) {
-        try {
-            final Node subjectNode = session.getNodeByIdentifier(subjectId);
-
-            if (StringUtils.startsWith(subjectNode.getPath(), "/content/documents/")) {
-                if (subjectNode.isNodeType("hippostd:folder")) {
-                    handleFolderRenameHippoEvent(subjectNode, subjectPath);
-                } else if (subjectNode.isNodeType("hippo:handle") && subjectNode.hasNode(subjectNode.getName())) {
-                    handleDocumentRenameHippoEvent(subjectNode, subjectPath);
-                }
-            } else {
-                log.info("Ignoring hippo event on '{}' because it's not under '/content/documents/'.", subjectNode.getPath());
-            }
-        } catch (RepositoryException e) {
-            log.error("Repository exception while handling rename workflow event.", e);
-        }
-    }
-
-    /**
      * Handles folder renaming hippo event.
      * @param folderNode folder node
      * @param subjectPath old folder path (the original folder path before renaming)
+     * @param arguments folder workflow arguments containing old folder path and new folder path as ordered.
      */
-    private void handleFolderRenameHippoEvent(final Node folderNode, final String subjectPath) {
+    private void handleFolderRenameHippoEvent(final Node folderNode, final String subjectPath, final List<String> arguments) {
         try {
-            final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(folderNode);
+            final String oldChildFolderNodeName = CollectionUtils.isEmpty(arguments) ? null : arguments.get(0);
+            final String newChildFolderNodeName = CollectionUtils.size(arguments) < 2 ? null : arguments.get(1);
+            Node newChildFolderNode = null;
 
-            boolean anyUpdated = false;
-
-            for (Node binaryFolderNode : binaryFolderNodes) {
-                if (synchronizeBinaryFolderByFolder(binaryFolderNode, folderNode, subjectPath)) {
-                    anyUpdated = true;
-                }
+            if (StringUtils.isNotBlank(newChildFolderNodeName) && folderNode.hasNode(newChildFolderNodeName)) {
+                newChildFolderNode = folderNode.getNode(newChildFolderNodeName);
             }
 
-            if (anyUpdated) {
-                session.save();
+            if (newChildFolderNode != null) {
+                final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(newChildFolderNode);
+
+                boolean anyUpdated = false;
+
+                for (Node binaryFolderNode : binaryFolderNodes) {
+                    if (synchronizeBinaryFolderByFolder(binaryFolderNode, newChildFolderNode, folderNode.getPath() + "/" + oldChildFolderNodeName)) {
+                        anyUpdated = true;
+                    }
+                }
+
+                if (anyUpdated) {
+                    session.save();
+                }
             }
         } catch (RepositoryException e) {
             log.error("Repository exception while synchronizing binary folders by document handle.", e);
@@ -170,8 +147,9 @@ public class BinaryPathUpdaterModule implements DaemonModule {
      * Handles document renaming hippo event.
      * @param documentHandleNode document handle node
      * @param subjectPath document handle node path
+     * @param arguments folder workflow arguments containing old folder path and new folder path as ordered.
      */
-    private void handleDocumentRenameHippoEvent(final Node documentHandleNode, final String subjectPath) {
+    private void handleDocumentRenameHippoEvent(final Node documentHandleNode, final String subjectPath, final List<String> arguments) {
         try {
             final Collection<Node> binaryFolderNodes = getLinkedBinaryFolderNodes(documentHandleNode);
 
@@ -209,7 +187,6 @@ public class BinaryPathUpdaterModule implements DaemonModule {
         boolean updated = false;
 
         try {
-            final String folderRelPath = StringUtils.removeStart(folderNode.getPath(), "/content/documents/");
             final String oldFolderRelPath = StringUtils.removeStart(oldFolderPath, "/content/documents/");
             final String binaryFolderRelPath = StringUtils.removeStart(binaryFolderNode.getPath(), "/content/gallery/");
 
@@ -264,8 +241,15 @@ public class BinaryPathUpdaterModule implements DaemonModule {
      */
     private void moveBinaryFolderNodeByBaseNode(Node binaryFolderNode, Node correspondingBaseNode) throws RepositoryException {
         // Now rename the binary folder name according to the document handle node name here...
+        String oldBinaryFolderNodePath = binaryFolderNode.getPath();
         String newBinaryFolderNodePath = binaryFolderNode.getParent().getPath() + "/" + correspondingBaseNode.getName();
-        session.move(binaryFolderNode.getPath(), newBinaryFolderNodePath);
+
+        if (StringUtils.equals(oldBinaryFolderNodePath, newBinaryFolderNodePath)) {
+            log.debug("The binary folder node path was already updated: '{}'.", oldBinaryFolderNodePath);
+            return;
+        }
+
+        session.move(oldBinaryFolderNodePath, newBinaryFolderNodePath);
 
         Node newBinaryFolderNode = session.getNode(newBinaryFolderNodePath);
 
@@ -367,13 +351,24 @@ public class BinaryPathUpdaterModule implements DaemonModule {
         @Subscribe
         public void handleEvent(HippoEvent<?> event) {
             if ("workflow".equals(event.category())) {
-                // If editor changes only the label of the document, it posts 'replaceAllLocalizedNames' action only.
-                // If editor changes both the label and the URL (node) name of the document, it posts 'rename' action followed by 'replaceAllLocalizedNames' action.
-                // Therefore, it's safer to handle 'replaceAllLocalizedNames' action here.
-                if ("replaceAllLocalizedNames".equals(event.action())) {
-                    String subjectId = ((HippoWorkflowEvent) event).subjectId();
+                try {
                     String subjectPath = ((HippoWorkflowEvent) event).subjectPath();
-                    handleRenameHippoEvent(subjectId, subjectPath);
+
+                    if (!StringUtils.startsWith(subjectPath, "/content/documents/")) {
+                        log.info("Ignoring hippo event on '{}' because it's not under '/content/documents/'.", subjectPath);
+                        return;
+                    }
+
+                    String subjectId = ((HippoWorkflowEvent) event).subjectId();
+                    final Node subjectNode = session.getNodeByIdentifier(subjectId);
+
+                    if ("rename".equals(event.action()) && subjectNode.isNodeType("hippostd:folder")) {
+                        handleFolderRenameHippoEvent(subjectNode, subjectPath, (List<String>) event.get("arguments"));
+                    } else if ("replaceAllLocalizedNames".equals(event.action()) && subjectNode.isNodeType("hippo:handle") && subjectNode.hasNode(subjectNode.getName())) {
+                        handleDocumentRenameHippoEvent(subjectNode, subjectPath, (List<String>) event.get("arguments"));
+                    }
+                } catch (RepositoryException e) {
+                    log.error("Repository exception while handling rename workflow event.", e);
                 }
             }
         }
