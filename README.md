@@ -19,7 +19,7 @@ After your project is set up, access the CMS at http://localhost:8080/cms.
 See [README.txt](./README.txt) for more detail.
 
 Test Cases
-==========
+===========
 
 Test Case 1: Custom Gallery Picker for an image link field
 --------------------------------------------------------
