@@ -220,8 +220,9 @@ public class BinaryPathUpdaterModule implements DaemonModule {
             final String binaryFolderParentRelPath = StringUtils.removeStart(binaryFolderNode.getParent().getPath(), "/content/gallery/");
 
             if (StringUtils.equals(binaryFolderParentRelPath, documentHandleParentRelPath)) {
-                moveBinaryFolderNodeByBaseNode(binaryFolderNode, documentHandleNode);
-                updated = true;
+                if (moveBinaryFolderNodeByBaseNode(binaryFolderNode, documentHandleNode)) {
+                    updated = true;
+                }
             }
         } catch (RepositoryException e) {
             log.error("Repository exception while synchronizing single binary folder by document handle.", e);
