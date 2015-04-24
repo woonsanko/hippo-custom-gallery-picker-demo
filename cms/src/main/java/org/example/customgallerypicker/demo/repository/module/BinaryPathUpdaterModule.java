@@ -18,6 +18,7 @@ package org.example.customgallerypicker.demo.repository.module;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.jcr.ItemNotFoundException;
@@ -192,8 +193,10 @@ public class BinaryPathUpdaterModule implements DaemonModule {
 
             if (StringUtils.startsWith(binaryFolderRelPath, oldFolderRelPath)) {
                 Node interimBinaryFolderNode = session.getNode("/content/gallery/" + oldFolderRelPath);
-                moveBinaryFolderNodeByBaseNode(interimBinaryFolderNode, folderNode);
-                updated = true;
+
+                if (moveBinaryFolderNodeByBaseNode(interimBinaryFolderNode, folderNode)) {
+                    updated = true;
+                }
             }
         } catch (RepositoryException e) {
             log.error("Repository exception while synchronizing single binary folder by document handle.", e);
@@ -213,17 +216,12 @@ public class BinaryPathUpdaterModule implements DaemonModule {
         boolean updated = false;
 
         try {
-            final String documentHandleRelPath = StringUtils.removeStart(documentHandleNode.getPath(), "/content/documents/");
             final String documentHandleParentRelPath = StringUtils.removeStart(documentHandleNode.getParent().getPath(), "/content/documents/");
-
-            String binaryFolderRelPath = StringUtils.removeStart(binaryFolderNode.getPath(), "/content/gallery/");
-            String binaryFolderParentRelPath = StringUtils.removeStart(binaryFolderNode.getParent().getPath(), "/content/gallery/");
+            final String binaryFolderParentRelPath = StringUtils.removeStart(binaryFolderNode.getParent().getPath(), "/content/gallery/");
 
             if (StringUtils.equals(binaryFolderParentRelPath, documentHandleParentRelPath)) {
-                if (!StringUtils.equals(binaryFolderRelPath, documentHandleRelPath)) {
-                    moveBinaryFolderNodeByBaseNode(binaryFolderNode, documentHandleNode);
-                    updated = true;
-                }
+                moveBinaryFolderNodeByBaseNode(binaryFolderNode, documentHandleNode);
+                updated = true;
             }
         } catch (RepositoryException e) {
             log.error("Repository exception while synchronizing single binary folder by document handle.", e);
@@ -239,47 +237,96 @@ public class BinaryPathUpdaterModule implements DaemonModule {
      * @param correspondingBaseNode corresponding base node (which is either document handle node or interim folder node)
      * @throws RepositoryException repository exception if node moving (renaming) fails.
      */
-    private void moveBinaryFolderNodeByBaseNode(Node binaryFolderNode, Node correspondingBaseNode) throws RepositoryException {
+    private boolean moveBinaryFolderNodeByBaseNode(Node binaryFolderNode, Node correspondingBaseNode) throws RepositoryException {
+        boolean updated = false;
+
         // Now rename the binary folder name according to the document handle node name here...
         String oldBinaryFolderNodePath = binaryFolderNode.getPath();
         String newBinaryFolderNodePath = binaryFolderNode.getParent().getPath() + "/" + correspondingBaseNode.getName();
 
-        if (StringUtils.equals(oldBinaryFolderNodePath, newBinaryFolderNodePath)) {
-            log.debug("The binary folder node path was already updated: '{}'.", oldBinaryFolderNodePath);
-            return;
-        }
+        boolean nodePathsAlreadyInSync = StringUtils.equals(oldBinaryFolderNodePath, newBinaryFolderNodePath);
 
-        session.move(oldBinaryFolderNodePath, newBinaryFolderNodePath);
+        if (nodePathsAlreadyInSync) {
+            log.debug("The node paths were already synchronized: '{}'.", oldBinaryFolderNodePath);
+        } else {
+            session.move(oldBinaryFolderNodePath, newBinaryFolderNodePath);
+            updated = true;
+        }
 
         Node newBinaryFolderNode = session.getNode(newBinaryFolderNodePath);
 
         // make sure to have proper mixins again.
         if (!newBinaryFolderNode.isNodeType("mix:referenceable")) {
             newBinaryFolderNode.addMixin("mix:referenceable");
+            updated = true;
         }
         if (!newBinaryFolderNode.isNodeType("hippo:translated")) {
             newBinaryFolderNode.addMixin("hippo:translated");
-        }
-
-        // let's remove all the hippo:translation child nodes and copy those again from the document handle.
-        for (NodeIterator nodeIt = newBinaryFolderNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
-            nodeIt.nextNode().remove();
+            updated = true;
         }
 
         Node documentHandleTranslationNode;
         String translationLanguage;
         String translationMessage;
         Node binaryFolderTranslationNode;
+        String binaryFolderTranslationMessage;
+
+        String systemDefaultLocaleLanguage = Locale.getDefault().getLanguage();
 
         for (NodeIterator nodeIt = correspondingBaseNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
             documentHandleTranslationNode = nodeIt.nextNode();
             translationLanguage = documentHandleTranslationNode.getProperty("hippo:language").getString();
             translationMessage = documentHandleTranslationNode.getProperty("hippo:message").getString();
 
-            binaryFolderTranslationNode = newBinaryFolderNode.addNode("hippo:translation", "hippo:translation");
-            binaryFolderTranslationNode.setProperty("hippo:language", translationLanguage);
-            binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
+            binaryFolderTranslationNode = getTranslationNode(newBinaryFolderNode, translationLanguage);
+
+            if (binaryFolderTranslationNode == null && StringUtils.isBlank(translationLanguage)) {
+                binaryFolderTranslationNode = getTranslationNode(newBinaryFolderNode, systemDefaultLocaleLanguage);
+            }
+
+            if (binaryFolderTranslationNode == null) {
+                binaryFolderTranslationNode = newBinaryFolderNode.addNode("hippo:translation", "hippo:translation");
+                binaryFolderTranslationNode.setProperty("hippo:language", translationLanguage);
+                binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
+                updated = true;
+            } else {
+                binaryFolderTranslationMessage = binaryFolderTranslationNode.getProperty("hippo:message").getString();
+                if (!StringUtils.equals(translationMessage, binaryFolderTranslationMessage)) {
+                    binaryFolderTranslationNode.setProperty("hippo:message", translationMessage);
+                    updated = true;
+                }
+            }
         }
+
+        return updated;
+    }
+
+    /**
+     * Finds hippo:translation child node under {@code baseNode} by the {@code language}.
+     * @param baseNode base node
+     * @param language translation language
+     * @return
+     */
+    private Node getTranslationNode(final Node baseNode, String language) {
+        Node translationNode = null;
+        Node node;
+        String nodeLang;
+
+        try {
+            for (NodeIterator nodeIt = baseNode.getNodes("hippo:translation"); nodeIt.hasNext(); ) {
+                node = nodeIt.nextNode();
+                nodeLang = node.getProperty("hippo:language").getString();
+
+                if (StringUtils.equals(language, nodeLang)) {
+                    translationNode = node;
+                    break;
+                }
+            }
+        } catch (RepositoryException e) {
+            log.error("Repository exception while searching for translation node by language.", e);
+        }
+
+        return translationNode;
     }
 
     /**
